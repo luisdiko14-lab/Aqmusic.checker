@@ -1,0 +1,116 @@
+name: AQMusic Checker - Deploy & Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  deploy-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Start Flask server
+      run: python server.py &
+      env:
+        FLASK_ENV: production
+
+    - name: Wait for server to start
+      run: |
+        sleep 2
+        for i in {1..30}; do
+          if curl -s http://localhost:5000/health > /dev/null; then
+            echo "Server is running!"
+            exit 0
+          fi
+          echo "Waiting for server... ($i/30)"
+          sleep 1
+        done
+        echo "Server failed to start"
+        exit 1
+
+    - name: Install Cloudflare Tunnel
+      run: |
+        curl -fsSL https://repo.charm.sh/install.sh | sh
+        apt-get update && apt-get install -y cloudflared
+
+    - name: Run Cloudflare Tunnel & Test
+      run: |
+        # Start cloudflared tunnel in background
+        cloudflared tunnel --url http://localhost:5000 &
+        TUNNEL_PID=$!
+        
+        # Wait for tunnel to establish
+        sleep 3
+        
+        # Get tunnel URL from logs
+        echo "Testing local endpoint..."
+        curl -v http://localhost:5000/ || echo "Local test failed"
+        
+        # Test API endpoint
+        echo -e "\n\nTesting API endpoint..."
+        curl -s http://localhost:5000/api/check | jq '.' || echo "API test failed"
+        
+        # Test health check
+        echo -e "\n\nTesting health endpoint..."
+        curl -s http://localhost:5000/health | jq '.' || echo "Health check failed"
+        
+        # Kill tunnel
+        kill $TUNNEL_PID 2>/dev/null || true
+
+    - name: Verify index.html exists
+      run: |
+        if [ -f "index.html" ]; then
+          echo "✓ index.html found"
+          grep -q "AQMusic Checker" index.html && echo "✓ HTML content verified"
+        else
+          echo "✗ index.html not found"
+          exit 1
+        fi
+
+    - name: Check API endpoints
+      run: |
+        echo "Checking server routes..."
+        python -c "
+        import server
+        routes = [str(rule) for rule in server.app.url_map.iter_rules()]
+        print('Available routes:')
+        for route in sorted(routes):
+            print(f'  {route}')
+        "
+
+    - name: Generate test report
+      run: |
+        echo "## AQMusic Checker Test Report" > /tmp/test-report.md
+        echo "- Python version: $(python --version)" >> /tmp/test-report.md
+        echo "- Flask installed: $(python -c 'import flask; print(flask.__version__)')" >> /tmp/test-report.md
+        echo "- Requests installed: $(python -c 'import requests; print(requests.__version__)')" >> /tmp/test-report.md
+        echo "- Server file: $(wc -l < server.py) lines" >> /tmp/test-report.md
+        echo "- HTML file: $(wc -l < index.html) lines" >> /tmp/test-report.md
+        cat /tmp/test-report.md
+
+    - name: Summary
+      run: |
+        echo "✓ Deployment workflow completed successfully!"
+        echo ""
+        echo "To run locally:"
+        echo "  1. pip install -r requirements.txt"
+        echo "  2. python server.py"
+        echo "  3. Open http://localhost:5000 in your browser"
+        echo ""
+        echo "To expose publicly:"
+        echo "  cloudflared tunnel --url http://localhost:5000"

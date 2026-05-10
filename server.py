@@ -2,6 +2,7 @@
 Flask server for AQMusic Checker - Web interface for domain status monitoring
 """
 from flask import Flask, render_template_string, jsonify
+from flask_cors import CORS
 import time
 import requests
 from datetime import datetime, timezone
@@ -12,6 +13,9 @@ import threading
 import os
 
 app = Flask(__name__)
+
+# Enable CORS for GitHub Pages deployment
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 SITES = [
     "https://aqmusic.qzz.io",

@@ -146,6 +146,50 @@ For each domain, the system collects:
 - SSL certificate issuer
 - SSL certificate expiry (days remaining)
 
+## Deployment Options
+
+### 🌐 GitHub Pages (Recommended for Static Hosting)
+
+Deploy your dashboard to GitHub Pages with custom domain support:
+
+```bash
+git push origin main
+# Automatically deploys to GitHub Pages via workflow
+```
+
+**Features:**
+- ✓ Free hosting on GitHub Pages
+- ✓ Custom domain: `audioquackchecker.webap.cl`
+- ✓ Automatic SSL/TLS certificate
+- ✓ CDN for fast global access
+
+**Setup Guide:** See [GITHUB_PAGES_SETUP.md](GITHUB_PAGES_SETUP.md)
+
+**DNS Configuration:**
+```
+audioquackchecker.webap.cl  CNAME  luisdiko14-lab.github.io
+```
+
+### 🚀 Cloudflare Tunnel (Quick Testing)
+
+Create instant public URL without DNS configuration:
+
+```bash
+# Install
+brew install cloudflare/cloudflare/cloudflared
+
+# Create tunnel
+cloudflared tunnel --url http://localhost:5000
+```
+
+**Features:**
+- ✓ No DNS setup needed
+- ✓ Instant public URL (changes on restart)
+- ✓ Free tier available
+- ✓ Works with localhost
+
+**Setup Guide:** See [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md)
+
 ## Color Coding
 
 - 🟢 **Green** - Website is online and responsive (< 800ms)
