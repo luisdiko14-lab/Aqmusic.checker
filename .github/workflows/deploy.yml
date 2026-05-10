@@ -46,8 +46,8 @@ jobs:
     - name: Install Cloudflare Tunnel
       run: |
         curl -L -o cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-        dpkg -i cloudflared.deb || true
-        apt-get update && apt-get install -y -f
+        sudo dpkg -i cloudflared.deb || true
+        sudo apt-get update && sudo apt-get install -y -f
         cloudflared --version
 
     - name: Run Cloudflare Tunnel & Test
