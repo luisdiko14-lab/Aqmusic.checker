@@ -226,10 +226,16 @@
         </div>
 
         <div class="refresh-info">
-            ⟳ Auto-refreshing every 10 seconds | Last update: <span id="lastUpdate">--:--:--</span>
+            <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:10px; align-items:center;">
+                <span>⟳ Auto-refreshing every 10 seconds</span>
+                <button id="refreshButton" style="border:none; background:#ffffff33; color:white; padding:10px 18px; border-radius:999px; cursor:pointer; transition:background .2s;">Refresh now</button>
+                <span>Last update: <span id="lastUpdate">--:--:--</span></span>
+            </div>
         </div>
 
         <div class="status-grid" id="quickStatus"></div>
+
+        <div id="summaryCards" class="status-grid"></div>
 
         <div id="loading" class="loading">
             <div class="spinner"></div>
@@ -247,111 +253,58 @@
         const API_URL = '/api/check';
         const REFRESH_INTERVAL = 10000; // 10 seconds
 
-        async function fetchStatus() {
-            const loadingDiv = document.getElementById('loading');
-            const errorDiv = document.getElementById('error');
-            const sitesContainer = document.getElementById('sitesContainer');
-            const quickStatusDiv = document.getElementById('quickStatus');
+        const loadingDiv = document.getElementById('loading');
+        const errorDiv = document.getElementById('error');
+        const sitesContainer = document.getElementById('sitesContainer');
+        const quickStatusDiv = document.getElementById('quickStatus');
+        const summaryCards = document.getElementById('summaryCards');
+        const refreshButton = document.getElementById('refreshButton');
 
-            try {
-                errorDiv.style.display = 'none';
-                loadingDiv.style.display = 'block';
+        function showError(message) {
+            errorDiv.style.display = 'block';
+            errorDiv.textContent = message;
+        }
 
-                const response = await fetch(API_URL);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                
-                const data = await response.json();
-                loadingDiv.style.display = 'none';
-
-                // Update quick status
-                quickStatusDiv.innerHTML = data.sites.map(site => `
-                    <div class="quick-status">
-                        <div class="quick-status-domain">${site.pretty_domain}</div>
-                        <div>
-                            <span class="quick-status-indicator ${getStatusClass(site.state)}"></span>
-                            <span>${site.state}</span>
-                        </div>
-                    </div>
-                `).join('');
-
-                // Update detailed cards
-                sitesContainer.innerHTML = data.sites.map((site, idx) => `
-                    <div class="site-card">
-                        <div class="site-header">
-                            <div class="site-name">${site.url}</div>
-                            <span class="status-badge ${getStatusClass(site.state)}">${site.state}</span>
-                        </div>
-                        <div class="site-content">
-                            <div class="info-row">
-                                <span class="info-label">Domain</span>
-                                <span class="info-value">${site.pretty_domain}</span>
-                            </div>
-                            ${site.ping_ms !== null ? `
-                            <div class="info-row">
-                                <span class="info-label">Response Time</span>
-                                <span class="info-value ping-ms">${site.ping_ms} ms</span>
-                            </div>
-                            ` : ''}
-                            <div class="info-row">
-                                <span class="info-label">HTTP Status</span>
-                                <span class="info-value">${site.status_code}</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">IP Address</span>
-                                <span class="info-value">${site.ip}</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Location</span>
-                                <span class="info-value">${site.city}, ${site.country}</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">SSL Issuer</span>
-                                <span class="info-value">${site.ssl_issuer}</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">SSL Expiry</span>
-                                <span class="info-value">${site.ssl_expiry_days} days</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Server</span>
-                                <span class="info-value">${site.server}</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Content Type</span>
-                                <span class="info-value">${site.content_type}</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Content Length</span>
-                                <span class="info-value">${site.content_length}</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Final URL</span>
-                                <span class="info-value"><a href="${site.final_url}" target="_blank" style="color: #667eea;">${site.final_url}</a></span>
-                            </div>
-                            ${site.error ? `
-                            <div class="info-row">
-                                <span class="info-label">Error</span>
-                                <span class="info-value" style="color: #EF4444;">${site.error}</span>
-                            </div>
-                            ` : ''}
-                        </div>
-                    </div>
-                `).join('');
-
-                updateLastUpdate();
-                
-            } catch (error) {
-                loadingDiv.style.display = 'none';
-                errorDiv.style.display = 'block';
-                errorDiv.textContent = `❌ Failed to fetch status: ${error.message}`;
-                console.error('Error fetching status:', error);
-            }
+        function hideError() {
+            errorDiv.style.display = 'none';
+            errorDiv.textContent = '';
         }
 
         function getStatusClass(state) {
-            if (state === 'Website On') return 'online';
-            if (state === 'Degraded') return 'degraded';
+            const normalized = String(state || '').toLowerCase();
+            if (normalized.includes('website on') || normalized.includes('ok') || normalized.includes('online')) return 'online';
+            if (normalized.includes('degraded') || normalized.includes('redirect')) return 'degraded';
             return 'error';
+        }
+
+        function formatStatusText(state) {
+            if (!state) return 'Unknown';
+            return String(state).replace(/([A-Z])/g, ' $1').trim();
+        }
+
+        function updateSummary(sites) {
+            const onlineCount = sites.filter(site => getStatusClass(site.state) === 'online').length;
+            const degradedCount = sites.filter(site => getStatusClass(site.state) === 'degraded').length;
+            const errorCount = sites.length - onlineCount - degradedCount;
+
+            const items = [
+                { title: 'Total domains', value: sites.length },
+                { title: 'Online', value: onlineCount, type: 'online' },
+                { title: 'Degraded', value: degradedCount, type: 'degraded' },
+                { title: 'Offline / Error', value: errorCount, type: 'error' }
+            ];
+
+            summaryCards.innerHTML = items.map(item => {
+                const cardClass = item.type ? `status-badge ${item.type}` : '';
+                return `
+                    <div class="quick-status">
+                        <div class="quick-status-domain">${item.title}</div>
+                        <div>
+                            <span class="status-badge ${cardClass}">${item.value}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
         function updateLastUpdate() {
@@ -360,9 +313,118 @@
             document.getElementById('updateTime').textContent = `Last checked at ${now.toLocaleString()}`;
         }
 
-        // Initial load and set up refresh interval
-        fetchStatus();
-        setInterval(fetchStatus, REFRESH_INTERVAL);
+        function createSiteCard(site) {
+            return `
+                <div class="site-card">
+                    <div class="site-header">
+                        <div class="site-name">${site.pretty_domain || site.url}</div>
+                        <span class="status-badge ${getStatusClass(site.state)}">${site.state || 'Unknown'}</span>
+                    </div>
+                    <div class="site-content">
+                        <div class="info-row">
+                            <span class="info-label">Domain</span>
+                            <span class="info-value">${site.pretty_domain}</span>
+                        </div>
+                        ${site.ping_ms !== null && site.ping_ms !== undefined ? `
+                        <div class="info-row">
+                            <span class="info-label">Response Time</span>
+                            <span class="info-value ping-ms">${site.ping_ms} ms</span>
+                        </div>
+                        ` : ''}
+                        <div class="info-row">
+                            <span class="info-label">HTTP Status</span>
+                            <span class="info-value">${site.status_code}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">IP Address</span>
+                            <span class="info-value">${site.ip || 'Unknown'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Location</span>
+                            <span class="info-value">${site.city || 'Unknown'}, ${site.country || 'Unknown'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">SSL Issuer</span>
+                            <span class="info-value">${site.ssl_issuer || 'Unknown'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">SSL Expiry</span>
+                            <span class="info-value">${site.ssl_expiry_days !== null && site.ssl_expiry_days !== undefined ? site.ssl_expiry_days + ' days' : 'Unknown'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Server</span>
+                            <span class="info-value">${site.server || 'Unknown'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Content Type</span>
+                            <span class="info-value">${site.content_type || 'Unknown'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Content Length</span>
+                            <span class="info-value">${site.content_length || 'Unknown'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Final URL</span>
+                            <span class="info-value"><a href="${site.final_url || site.url}" target="_blank" style="color: #667eea;">${site.final_url || site.url}</a></span>
+                        </div>
+                        ${site.error ? `
+                        <div class="info-row">
+                            <span class="info-label">Error</span>
+                            <span class="info-value" style="color: #EF4444;">${site.error}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        async function fetchStatus() {
+            hideError();
+            loadingDiv.style.display = 'block';
+
+            try {
+                const response = await fetch(API_URL, { cache: 'no-store' });
+                if (!response.ok) {
+                    throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                if (!data || !Array.isArray(data.sites)) {
+                    throw new Error('Unexpected API response format');
+                }
+
+                quickStatusDiv.innerHTML = data.sites.map(site => `
+                    <div class="quick-status">
+                        <div class="quick-status-domain">${site.pretty_domain}</div>
+                        <div>
+                            <span class="quick-status-indicator ${getStatusClass(site.state)}"></span>
+                            <span>${formatStatusText(site.state)}</span>
+                        </div>
+                    </div>
+                `).join('');
+
+                updateSummary(data.sites);
+                sitesContainer.innerHTML = data.sites.map(createSiteCard).join('');
+                updateLastUpdate();
+            } catch (error) {
+                showError(`❌ Failed to fetch status: ${error.message}`);
+                sitesContainer.innerHTML = '';
+                quickStatusDiv.innerHTML = '';
+                summaryCards.innerHTML = '';
+                console.error('Error fetching status:', error);
+            } finally {
+                loadingDiv.style.display = 'none';
+            }
+        }
+
+        refreshButton.addEventListener('click', () => {
+            fetchStatus();
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchStatus();
+            setInterval(fetchStatus, REFRESH_INTERVAL);
+        });
     </script>
 </body>
 </html>
