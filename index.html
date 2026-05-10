@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AQMusic Checker - Domain Status</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .refresh-info {
+            text-align: center;
+            color: white;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        .sites-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .site-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .site-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+        }
+
+        .site-header {
+            padding: 20px;
+            border-bottom: 3px solid #e0e0e0;
+        }
+
+        .site-name {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+            color: white;
+        }
+
+        .status-badge.online {
+            background-color: #22C55E;
+        }
+
+        .status-badge.degraded {
+            background-color: #FACC15;
+            color: #333;
+        }
+
+        .status-badge.error {
+            background-color: #EF4444;
+        }
+
+        .site-content {
+            padding: 20px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 0.95em;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #666;
+            flex: 0 0 45%;
+        }
+
+        .info-value {
+            color: #333;
+            flex: 1;
+            word-break: break-all;
+            text-align: right;
+        }
+
+        .ping-ms {
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background-color: #FEE2E2;
+            border-left: 4px solid #EF4444;
+            color: #991B1B;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .last-update {
+            text-align: center;
+            color: white;
+            font-size: 0.85em;
+            opacity: 0.7;
+            margin-top: 20px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .quick-status {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .quick-status-domain {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 0.9em;
+        }
+
+        .quick-status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .quick-status-indicator.online {
+            background-color: #22C55E;
+        }
+
+        .quick-status-indicator.error {
+            background-color: #EF4444;
+        }
+
+        .quick-status-indicator.degraded {
+            background-color: #FACC15;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 AQMusic Checker</h1>
+            <p>Real-time Domain Status Monitor</p>
+        </div>
+
+        <div class="refresh-info">
+            ⟳ Auto-refreshing every 10 seconds | Last update: <span id="lastUpdate">--:--:--</span>
+        </div>
+
+        <div class="status-grid" id="quickStatus"></div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Checking domain status...</p>
+        </div>
+
+        <div id="error" class="error-message" style="display: none;"></div>
+
+        <div class="sites-grid" id="sitesContainer"></div>
+
+        <div class="last-update" id="updateTime"></div>
+    </div>
+
+    <script>
+        const API_URL = '/api/check';
+        const REFRESH_INTERVAL = 10000; // 10 seconds
+
+        async function fetchStatus() {
+            const loadingDiv = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            const sitesContainer = document.getElementById('sitesContainer');
+            const quickStatusDiv = document.getElementById('quickStatus');
+
+            try {
+                errorDiv.style.display = 'none';
+                loadingDiv.style.display = 'block';
+
+                const response = await fetch(API_URL);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const data = await response.json();
+                loadingDiv.style.display = 'none';
+
+                // Update quick status
+                quickStatusDiv.innerHTML = data.sites.map(site => `
+                    <div class="quick-status">
+                        <div class="quick-status-domain">${site.pretty_domain}</div>
+                        <div>
+                            <span class="quick-status-indicator ${getStatusClass(site.state)}"></span>
+                            <span>${site.state}</span>
+                        </div>
+                    </div>
+                `).join('');
+
+                // Update detailed cards
+                sitesContainer.innerHTML = data.sites.map((site, idx) => `
+                    <div class="site-card">
+                        <div class="site-header">
+                            <div class="site-name">${site.url}</div>
+                            <span class="status-badge ${getStatusClass(site.state)}">${site.state}</span>
+                        </div>
+                        <div class="site-content">
+                            <div class="info-row">
+                                <span class="info-label">Domain</span>
+                                <span class="info-value">${site.pretty_domain}</span>
+                            </div>
+                            ${site.ping_ms !== null ? `
+                            <div class="info-row">
+                                <span class="info-label">Response Time</span>
+                                <span class="info-value ping-ms">${site.ping_ms} ms</span>
+                            </div>
+                            ` : ''}
+                            <div class="info-row">
+                                <span class="info-label">HTTP Status</span>
+                                <span class="info-value">${site.status_code}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">IP Address</span>
+                                <span class="info-value">${site.ip}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Location</span>
+                                <span class="info-value">${site.city}, ${site.country}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">SSL Issuer</span>
+                                <span class="info-value">${site.ssl_issuer}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">SSL Expiry</span>
+                                <span class="info-value">${site.ssl_expiry_days} days</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Server</span>
+                                <span class="info-value">${site.server}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Content Type</span>
+                                <span class="info-value">${site.content_type}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Content Length</span>
+                                <span class="info-value">${site.content_length}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Final URL</span>
+                                <span class="info-value"><a href="${site.final_url}" target="_blank" style="color: #667eea;">${site.final_url}</a></span>
+                            </div>
+                            ${site.error ? `
+                            <div class="info-row">
+                                <span class="info-label">Error</span>
+                                <span class="info-value" style="color: #EF4444;">${site.error}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `).join('');
+
+                updateLastUpdate();
+                
+            } catch (error) {
+                loadingDiv.style.display = 'none';
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = `❌ Failed to fetch status: ${error.message}`;
+                console.error('Error fetching status:', error);
+            }
+        }
+
+        function getStatusClass(state) {
+            if (state === 'Website On') return 'online';
+            if (state === 'Degraded') return 'degraded';
+            return 'error';
+        }
+
+        function updateLastUpdate() {
+            const now = new Date();
+            document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
+            document.getElementById('updateTime').textContent = `Last checked at ${now.toLocaleString()}`;
+        }
+
+        // Initial load and set up refresh interval
+        fetchStatus();
+        setInterval(fetchStatus, REFRESH_INTERVAL);
+    </script>
+</body>
+</html>

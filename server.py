@@ -1,11 +1,17 @@
+"""
+Flask server for AQMusic Checker - Web interface for domain status monitoring
+"""
+from flask import Flask, render_template_string, jsonify
 import time
 import requests
 from datetime import datetime, timezone
 import socket
 import urllib.parse
 import ssl
+import threading
+import os
 
-WEBHOOK_URL = "https://discord.com/api/webhooks/1502651218437079130/kxUjcxSrv988GpvHMz8y5ZMnuaLnszTVQirIfHs6fXOm-ok0IInHxWhRG1fPayC4SPmH"
+app = Flask(__name__)
 
 SITES = [
     "https://aqmusic.qzz.io",
@@ -13,9 +19,8 @@ SITES = [
     "https://app.aqmusic.qzz.io",
 ]
 
-CHECK_INTERVAL_SECONDS = 60   # 1 minute
-HIGH_PING_MS = 800             # yellow if above this
-VERY_HIGH_PING_MS = 1500       # orange if above this
+HIGH_PING_MS = 800
+VERY_HIGH_PING_MS = 1500
 
 def pretty_domain(url: str) -> str:
     return (
@@ -72,17 +77,17 @@ def status_info(url: str):
         if r.status_code == 200:
             if elapsed_ms >= HIGH_PING_MS:
                 state = "Degraded"
-                color = 0xFACC15  # yellow
+                color = 0xFACC15
             else:
                 state = "Website On"
-                color = 0x22C55E  # green
+                color = 0x22C55E
 
         elif r.status_code == 404:
             state = "Not Found"
-            color = 0xEF4444  # red
+            color = 0xEF4444
         elif r.status_code == 502:
             state = "Website On"
-            color = 0x22C55E  # green
+            color = 0x22C55E
         elif r.status_code == 503:
             state = "Service Unavailable"
             color = 0xEF4444
@@ -91,12 +96,14 @@ def status_info(url: str):
             color = 0xEF4444
         elif 300 <= r.status_code <= 399:
             state = "Redirecting"
-            color = 0xFACC15  # yellow
+            color = 0xFACC15
         else:
             state = "Problem detected"
             color = 0xEF4444
 
         return {
+            "url": url,
+            "pretty_domain": pretty_domain(url),
             "ok": r.status_code == 200,
             "state": state,
             "color": color,
@@ -111,10 +118,13 @@ def status_info(url: str):
             "city": city,
             "ssl_expiry_days": ssl_info["expiry_days"],
             "ssl_issuer": ssl_info["issuer"],
+            "error": None,
         }
 
     except requests.Timeout:
         return {
+            "url": url,
+            "pretty_domain": pretty_domain(url),
             "ok": False,
             "state": "Timeout",
             "color": 0xEF4444,
@@ -129,9 +139,12 @@ def status_info(url: str):
             "city": city,
             "ssl_expiry_days": ssl_info["expiry_days"],
             "ssl_issuer": ssl_info["issuer"],
+            "error": None,
         }
     except requests.RequestException as e:
         return {
+            "url": url,
+            "pretty_domain": pretty_domain(url),
             "ok": False,
             "state": f"Request failed",
             "color": 0xEF4444,
@@ -149,66 +162,57 @@ def status_info(url: str):
             "ssl_issuer": ssl_info["issuer"],
         }
 
-def send_webhook_embed(site_url: str, info: dict):
-    site_name = pretty_domain(site_url)
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+@app.route('/')
+def index():
+    """Serve the main HTML dashboard"""
+    try:
+        with open(os.path.join(os.path.dirname(__file__), 'index.html'), 'r') as f:
+            html_content = f.read()
+        return html_content
+    except:
+        return "index.html not found", 404
 
-    description = (
-        f"**Status:** {info['state']}\n"
-        f"**Ping:** {info['ping_ms']} ms\n" if info["ping_ms"] is not None else f"**Status:** {info['state']}\n"
-    )
-
-    fields = [
-        {"name": "Domain", "value": site_name, "inline": True},
-        {"name": "IP Address", "value": str(info.get("ip", "Unknown")), "inline": True},
-        {"name": "Location", "value": f"{info.get('city', 'Unknown')}, {info.get('country', 'Unknown')}", "inline": True},
-        {"name": "SSL Expiry", "value": f"{info.get('ssl_expiry_days', 'Unknown')} days", "inline": True},
-        {"name": "SSL Issuer", "value": str(info.get("ssl_issuer", "Unknown")), "inline": True},
-        {"name": "HTTP Code", "value": str(info["status_code"]), "inline": True},
-        {"name": "Final URL", "value": info["final_url"], "inline": False},
-        {"name": "Server", "value": str(info.get("server", "Unknown")), "inline": True},
-        {"name": "Content Type", "value": str(info.get("content_type", "Unknown")), "inline": True},
-        {"name": "Content Length", "value": str(info.get("content_length", "Unknown")), "inline": True},
-        {"name": "Checked At", "value": now, "inline": False},
-    ]
-
-    if "error" in info:
-        fields.append({"name": "Error", "value": info["error"][:1000], "inline": False})
-
-    payload = {
-        "username": "Website Monitor",
-        "embeds": [
-            {
-                "title": f"{site_name} status report",
-                "description": description,
-                "color": info["color"],
-                "fields": fields,
-                "footer": {"text": "Website stats monitor"},
-            }
-        ]
+@app.route('/api/check')
+def api_check():
+    """API endpoint to check all sites and return status"""
+    results = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "sites": []
     }
-
-    requests.post(WEBHOOK_URL, json=payload, timeout=15)
-
-def send_ping_message():
-    """Send a ping message to @everyone with music link"""
-    payload = {
-        "content": "-# Have fun listening to music at [aqmusic.qzz.io](https://aqmusic.qzz.io)"
-    }
-    requests.post(WEBHOOK_URL, json=payload, timeout=15)
-
-def check_all_sites():
+    
     for site in SITES:
-        info = status_info(site)
-        send_webhook_embed(site, info)
+        try:
+            info = status_info(site)
+            results["sites"].append(info)
+        except Exception as e:
+            results["sites"].append({
+                "url": site,
+                "pretty_domain": pretty_domain(site),
+                "ok": False,
+                "state": "Error",
+                "color": 0xEF4444,
+                "status_code": "Error",
+                "ping_ms": None,
+                "final_url": site,
+                "server": "Unknown",
+                "content_type": "Unknown",
+                "content_length": "Unknown",
+                "ip": "Unknown",
+                "country": "Unknown",
+                "city": "Unknown",
+                "ssl_expiry_days": None,
+                "ssl_issuer": "Unknown",
+                "error": str(e),
+            })
+    
+    return jsonify(results)
 
-def main():
-    print("Starting website monitor and ping broadcast...")
-    while True:
-        check_all_sites()
-        send_ping_message()
-        print(f"Pings sent at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
-        time.sleep(CHECK_INTERVAL_SECONDS)
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    return jsonify({"status": "ok"}), 200
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    print("Starting AQMusic Checker Web Server...")
+    print("Open http://localhost:5000 in your browser")
+    app.run(debug=False, host='0.0.0.0', port=5000, threaded=True)
