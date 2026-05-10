@@ -45,8 +45,10 @@ jobs:
 
     - name: Install Cloudflare Tunnel
       run: |
-        curl -fsSL https://repo.charm.sh/install.sh | sh
-        apt-get update && apt-get install -y cloudflared
+        curl -L -o cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+        dpkg -i cloudflared.deb || true
+        apt-get update && apt-get install -y -f
+        cloudflared --version
 
     - name: Run Cloudflare Tunnel & Test
       run: |
